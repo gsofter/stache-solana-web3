@@ -21,6 +21,7 @@ import {
     ASSOCIATED_TOKEN_PROGRAM_ID,
     createAssociatedTokenAccount,
     createAssociatedTokenAccountInstruction,
+    getOrCreateAssociatedTokenAccount,
     createMint,
     createMintToCheckedInstruction,
     createTransferCheckedInstruction,
@@ -130,22 +131,8 @@ export const stach = async (provider: anchor.AnchorProvider, mint: Keypair, user
 
     const stacheMintAta = getAssociatedTokenAddressSync(mint.publicKey, stachePda, true);
 
-    // stash: this tx will create the stache's mint ata and deposit some tokens in there
-    let tx = new Transaction().add(
-        createAssociatedTokenAccountInstruction(provider.wallet.publicKey, stacheMintAta, stachePda, mint.publicKey),
-        createTransferCheckedInstruction(userAta, mint.publicKey, stacheMintAta, provider.wallet.publicKey, 100 * 1e9, 9)
-    );
-    let txid = await provider.sendAndConfirm(tx);
-
-    console.log(`created stache mint ata: ${stacheMintAta.toBase58()}, and deposited 100 tokens, txid: ${txid}`);
-    let tokenAmount = await connection.getTokenAccountBalance(stacheMintAta);
-    console.log(`>> stache mint ata balance: ${tokenAmount.value.uiAmount}`);
-    tokenAmount = await connection.getTokenAccountBalance(userAta);
-    console.log(`>> user ata balance: ${tokenAmount.value.uiAmount}`);
-
-
     // now let's stash via the stash instruction
-    tx = await stacheProgram.methods.stash(new anchor.BN(amount * 1e9)).accounts({
+    const tx = await stacheProgram.methods.stash(new anchor.BN(amount * 1e9)).accounts({
         stache: stachePda,
         stacheAta: stacheMintAta,
         mint: mint.publicKey,
@@ -156,14 +143,24 @@ export const stach = async (provider: anchor.AnchorProvider, mint: Keypair, user
         associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
     }).transaction();
 
-    txid = await provider.sendAndConfirm(tx);
+    const txid = await provider.sendAndConfirm(tx);
 
     console.log(`called > stash: stash 500 more tokens, txid: ${txid}`);
-    tokenAmount = await connection.getTokenAccountBalance(stacheMintAta);
+    let tokenAmount = await connection.getTokenAccountBalance(stacheMintAta);
     console.log(`new stache mint ata balance: ${tokenAmount.value.uiAmount}`);
     tokenAmount = await connection.getTokenAccountBalance(userAta);
     console.log(`new user ata balance: ${tokenAmount.value.uiAmount}`);
 }
+
+/**
+ * 
+ * @param provider 
+ * @param mint 
+ * @param userAta 
+ * @param amount 
+ * @param domain 
+ * @param username 
+ */
 
 export const unstach = async (provider: anchor.AnchorProvider, mint: Keypair, userAta: PublicKey, amount: number, domain: string, username: string) => {
 
@@ -186,5 +183,23 @@ export const unstach = async (provider: anchor.AnchorProvider, mint: Keypair, us
     }).transaction();
 
     const txid = await provider.sendAndConfirm(tx);
+}
 
+export const destroyStache = async (provider: anchor.AnchorProvider, domain: string, username: string) => {
+    const stacheProgram = new Program(StacheIdl, StacheIdl.metadata.address, provider);
+    const keychainProgram = new Program(KeychainIdl, KeychainIdl.metadata.address, provider);
+    const [domainPda] = findDomainPda(domain, keychainProgram.programId);
+
+    const [stachePda, stachePdaBump] = findStachePda(username, domainPda, stacheProgram.programId);
+    const [userKeychainPda] = findKeychainPda(username, domain, keychainProgram.programId);
+
+    const tx = await stacheProgram.methods.destroyStache().accounts({
+        stache: stachePda,
+        keychain: userKeychainPda,
+        authority: provider.wallet.publicKey,
+        keychainProgram: keychainProgram.programId,
+        systemProgram: SystemProgram.programId,
+    }).rpc();
+
+    console.log(`destroyed stache for ${username} in tx: ${tx}`);
 }
