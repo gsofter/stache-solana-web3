@@ -1,5 +1,7 @@
 ## Getting Started
 
+Copy `.env.example` to `.env` and update configuration.
+
 ## Available Scripts
 
 - `clean` - remove coverage data, Jest cache and transpiled files,
