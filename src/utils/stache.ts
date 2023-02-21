@@ -1,0 +1,205 @@
+import * as anchor from '@project-serum/anchor';
+import { Idl, Program, web3 } from '@project-serum/anchor';
+
+import { execSync } from 'child_process';
+
+import kcidl from '../idls/keychain.json';
+import stidl from '../idls/stashe.json';
+
+import {
+    Keypair,
+    PublicKey,
+    sendAndConfirmTransaction,
+    SystemProgram,
+    Transaction,
+} from '@solana/web3.js';
+import {
+    createNFTMint,
+    createTokenMint,
+    findStachePda,
+    findDomainPda,
+    findDomainStatePda,
+    findKeychainKeyPda,
+    findKeychainPda,
+    findKeychainStatePda,
+} from './utils';
+import * as assert from 'assert';
+import {
+    ASSOCIATED_TOKEN_PROGRAM_ID,
+    createAssociatedTokenAccount,
+    createAssociatedTokenAccountInstruction,
+    createMint,
+    createMintToCheckedInstruction,
+    createTransferCheckedInstruction,
+    createTransferCheckedWithFeeInstruction,
+    createTransferInstruction,
+    getAssociatedTokenAddress,
+    getAssociatedTokenAddressSync,
+    mintToChecked,
+    TOKEN_PROGRAM_ID,
+    transferChecked,
+} from '@solana/spl-token';
+
+const KeychainIdl = kcidl as Idl;
+const StacheIdl = stidl as Idl;
+
+const KeychainProgId: PublicKey = new PublicKey(KeychainIdl.metadata.address);
+
+///// this test is set up to run against a local validator with the assumptions:
+///// 1. the keychain program is deployed to the local validator at the address in the keychain idl
+///// 2. the key set up in anchor.toml is funded with SOL (to deploy stache)
+
+// then u can run: anchor test --provider.cluster localnet --skip-local-validator
+
+const deployKeychain = () => {
+    const deployCmd = `solana program deploy --url localhost -v --program-id $(pwd)/../keychain/target/deploy/keychain-keypair.json $(pwd)/../keychain/target/deploy/keychain.so`;
+    execSync(deployCmd);
+};
+
+
+
+/**
+ * Create stache
+ *
+ * @param provider
+ * @param domain
+ * @param username
+ * @param admin
+ */
+export const createStache = async (
+    provider: anchor.AnchorProvider,
+    domain: string,
+    username: string,
+    admin: anchor.web3.Keypair,
+) => {
+    const connection = provider.connection;
+
+   
+
+    const stacheProgram = new Program(
+        StacheIdl,
+        StacheIdl.metadata.address,
+        provider,
+    );
+    const keychainProgram = new Program(
+        KeychainIdl,
+        KeychainIdl.metadata.address,
+        provider,
+    );
+
+    const [domainPda] = findDomainPda(domain, keychainProgram.programId);
+    const [userKeychainPda] = findKeychainPda(
+        username,
+        domain,
+        keychainProgram.programId,
+    );
+
+    const [stachePda, stachePdaBump] = findStachePda(
+        username,
+        domainPda,
+        stacheProgram.programId,
+    );
+
+    const txid = await stacheProgram.methods
+        .createStache()
+        .accounts({
+            stache: stachePda,
+            keychain: userKeychainPda,
+            keychainProgram: keychainProgram.programId,
+            systemProgram: SystemProgram.programId,
+        })
+        .rpc();
+
+    const stache = await stacheProgram.account.currentStache.fetch(stachePda);
+};
+
+/**
+ *
+ * @param provider AnchorProvider
+ * @param mint Minted Token Account
+ * @param userAta
+ * @param domain
+ * @param username
+ */
+export const stach = async (
+    provider: anchor.AnchorProvider,
+    mint: Keypair,
+    userAta: PublicKey,
+    domain: string,
+    username: string,
+) => {
+    const connection = provider.connection;
+    const stacheProgram = new Program(
+        StacheIdl,
+        StacheIdl.metadata.address,
+        provider,
+    );
+    const keychainProgram = new Program(
+        KeychainIdl,
+        KeychainIdl.metadata.address,
+        provider,
+    );
+
+    const [domainPda] = findDomainPda(domain, keychainProgram.programId);
+    const [stachePda, stachePdaBump] = findStachePda(
+        username,
+        domainPda,
+        stacheProgram.programId,
+    );
+
+    const stacheMintAta = getAssociatedTokenAddressSync(
+        mint.publicKey,
+        stachePda,
+        true,
+    );
+
+    // stash: this tx will create the stache's mint ata and deposit some tokens in there
+    let tx = new Transaction().add(
+        createAssociatedTokenAccountInstruction(
+            provider.wallet.publicKey,
+            stacheMintAta,
+            stachePda,
+            mint.publicKey,
+        ),
+        createTransferCheckedInstruction(
+            userAta,
+            mint.publicKey,
+            stacheMintAta,
+            provider.wallet.publicKey,
+            100 * 1e9,
+            9,
+        ),
+    );
+    let txid = await provider.sendAndConfirm(tx);
+
+    console.log(
+        `created stache mint ata: ${stacheMintAta.toBase58()}, and deposited 100 tokens, txid: ${txid}`,
+    );
+    let tokenAmount = await connection.getTokenAccountBalance(stacheMintAta);
+    console.log(`>> stache mint ata balance: ${tokenAmount.value.uiAmount}`);
+    tokenAmount = await connection.getTokenAccountBalance(userAta);
+    console.log(`>> user ata balance: ${tokenAmount.value.uiAmount}`);
+
+    // now let's stash via the stash instruction
+    tx = await stacheProgram.methods
+        .stash(new anchor.BN(500 * 1e9))
+        .accounts({
+            stache: stachePda,
+            stacheAta: stacheMintAta,
+            mint: mint.publicKey,
+            owner: provider.wallet.publicKey,
+            fromToken: userAta,
+            systemProgram: SystemProgram.programId,
+            tokenProgram: TOKEN_PROGRAM_ID,
+            associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+        })
+        .transaction();
+
+    txid = await provider.sendAndConfirm(tx);
+
+    console.log(`called > stash: stash 500 more tokens, txid: ${txid}`);
+    tokenAmount = await connection.getTokenAccountBalance(stacheMintAta);
+    console.log(`new stache mint ata balance: ${tokenAmount.value.uiAmount}`);
+    tokenAmount = await connection.getTokenAccountBalance(userAta);
+    console.log(`new user ata balance: ${tokenAmount.value.uiAmount}`);
+};
