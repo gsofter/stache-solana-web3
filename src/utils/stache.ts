@@ -76,7 +76,7 @@ export const createStache = async (
     const stacheProgram = new Program(StacheIdl, StacheIdl.metadata.address, provider);
     const keychainProgram = new Program(KeychainIdl, KeychainIdl.metadata.address, provider);
 
-    console.log("keychainProgram.programId =>", keychainProgram.programId)
+    console.log("keychainProgram.programId =>", keychainProgram.programId.toBase58())
 
     const [domainPda] = findDomainPda(domain, keychainProgram.programId);
 
@@ -211,4 +211,15 @@ export const destroyStache = async (provider: anchor.AnchorProvider, domain: str
     }).rpc();
 
     console.log(`destroyed stache for ${username} in tx: ${tx}`);
+}
+
+export const getStache = async (provider: anchor.AnchorProvider, domain: string, username: string) => {
+    const stacheProgram = new Program(StacheIdl, StacheIdl.metadata.address, provider);
+    const keychainProgram = new Program(KeychainIdl, KeychainIdl.metadata.address, provider);
+    const [domainPda] = findDomainPda(domain, keychainProgram.programId);
+    const [stachePda, stachePdaBump] = findStachePda(username, domainPda, stacheProgram.programId);
+
+    const stache = await stacheProgram.account.currentStache.fetchNullable(stachePda);
+
+    return stache
 }

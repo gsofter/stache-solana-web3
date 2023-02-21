@@ -1,6 +1,6 @@
 import * as anchor from "@project-serum/anchor";
 import { Keypair } from "@solana/web3.js";
-import { createStache } from "../stache";
+import { createStache, getStache } from "../stache";
 import { airdropSol } from "../utils";
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -53,6 +53,10 @@ describe('stache', () => {
 
   it('createStache', async () => {
     await createStache(provider, domain, username)
-    expect(1).toBe(1)
+
+    const stache = await getStache(provider, domain, username)
+
+    expect(stache).not.toBe(null)
+    expect(stache.stacheId).toBe(username)
   }, 10000);
 });
