@@ -120,7 +120,7 @@ export const createStache = async (
  * @param domain
  * @param username
  */
-export const stach = async (provider: anchor.AnchorProvider, mint: Keypair, userAta: PublicKey, domain: string, username: string) => {
+export const stach = async (provider: anchor.AnchorProvider, mint: Keypair, userAta: PublicKey, amount: number, domain: string, username: string) => {
     const connection = provider.connection;
     const stacheProgram = new Program(StacheIdl, StacheIdl.metadata.address, provider);
     const keychainProgram = new Program(KeychainIdl, KeychainIdl.metadata.address, provider);
@@ -145,7 +145,7 @@ export const stach = async (provider: anchor.AnchorProvider, mint: Keypair, user
 
 
     // now let's stash via the stash instruction
-    tx = await stacheProgram.methods.stash(new anchor.BN(500 * 1e9)).accounts({
+    tx = await stacheProgram.methods.stash(new anchor.BN(amount * 1e9)).accounts({
         stache: stachePda,
         stacheAta: stacheMintAta,
         mint: mint.publicKey,
@@ -165,3 +165,26 @@ export const stach = async (provider: anchor.AnchorProvider, mint: Keypair, user
     console.log(`new user ata balance: ${tokenAmount.value.uiAmount}`);
 }
 
+export const unstach = async (provider: anchor.AnchorProvider, mint: Keypair, userAta: PublicKey, amount: number, domain: string, username: string) => {
+
+    const stacheProgram = new Program(StacheIdl, StacheIdl.metadata.address, provider);
+    const keychainProgram = new Program(KeychainIdl, KeychainIdl.metadata.address, provider);
+    const [domainPda] = findDomainPda(domain, keychainProgram.programId);
+
+    const [stachePda, stachePdaBump] = findStachePda(username, domainPda, stacheProgram.programId);
+
+    const stacheMintAta = getAssociatedTokenAddressSync(mint.publicKey, stachePda, true);
+
+    const tx = await stacheProgram.methods.unstash(new anchor.BN(amount * 1e9)).accounts({
+        stache: stachePda,
+        stacheAta: stacheMintAta,
+        mint: mint.publicKey,
+        owner: provider.wallet.publicKey,
+        toToken: userAta,
+        tokenProgram: TOKEN_PROGRAM_ID,
+        associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+    }).transaction();
+
+    const txid = await provider.sendAndConfirm(tx);
+
+}
