@@ -115,6 +115,7 @@ export const createStache = async (
 
 /**
  * 
+ * Stache
  * @param provider AnchorProvider
  * @param mint Minted Token Account
  * @param userAta 
@@ -154,6 +155,7 @@ export const stach = async (provider: anchor.AnchorProvider, mint: Keypair, user
 
 /**
  * 
+ * Unstache 
  * @param provider 
  * @param mint 
  * @param userAta 
@@ -184,6 +186,13 @@ export const unstach = async (provider: anchor.AnchorProvider, mint: Keypair, us
 
     const txid = await provider.sendAndConfirm(tx);
 }
+
+/**
+ * Destroy Stache
+ * @param provider 
+ * @param domain 
+ * @param username 
+ */
 
 export const destroyStache = async (provider: anchor.AnchorProvider, domain: string, username: string) => {
     const stacheProgram = new Program(StacheIdl, StacheIdl.metadata.address, provider);
