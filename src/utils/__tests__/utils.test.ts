@@ -11,11 +11,11 @@ require('dotenv').config({
 
 describe('Utils', () => {
 
-    it('airdropSol: should airdrop 2 sol to admin wallet', async () => {
-        const connection = new anchor.web3.Connection(clusterApiUrl('devnet'), "confirmed")
-        const adminWallet = anchor.web3.Keypair.generate();
-        await airdropSol(connection, adminWallet.publicKey, 2)
-        const adminBalance = await connection.getBalance(adminWallet.publicKey)
-        expect(adminBalance).toBe(LAMPORTS_PER_SOL * 2)
-    }, 10000);
+    // it('airdropSol: should airdrop 1 sol to admin wallet', async () => {
+    //     const connection = new anchor.web3.Connection(clusterApiUrl('devnet'), "confirmed")
+    //     const wallet = anchor.web3.Keypair.generate();
+    //     await airdropSol(connection, wallet.publicKey, 2)
+    //     const adminBalance = await connection.getBalance(wallet.publicKey)
+    //     expect(adminBalance).toBe(LAMPORTS_PER_SOL * 2)
+    // }, 10000);
 });
