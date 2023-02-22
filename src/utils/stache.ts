@@ -60,6 +60,41 @@ const treasury = Keypair.fromSecretKey(
     )
 )
 
+export const createKeychain = async (provider: anchor.AnchorProvider, domain: string, username: string) => {
+
+    const keychainProgram = new Program(KeychainIdl, KeychainIdl.metadata.address, provider);
+    const [domainPda] = findDomainPda(domain, keychainProgram.programId);
+    const [domainStatePda, domainStatePdaBump] = findDomainStatePda(domain, keychainProgram.programId);
+    const [userKeychainPda] = findKeychainPda(username, domain, keychainProgram.programId);
+    const [userKeychainStatePda] = findKeychainStatePda(userKeychainPda, domain, keychainProgram.programId);
+    const [userKeychainKeyPda] = findKeychainKeyPda(provider.wallet.publicKey, domain, keychainProgram.programId);
+
+    console.log(`creating keychain domain: ${domain}...`);
+
+    // first create the domain
+    let txid = await keychainProgram.methods.createDomain(domain, renameCost).accounts({
+        domain: domainPda,
+        domainState: domainStatePda,
+        authority: provider.wallet.publicKey,
+        systemProgram: SystemProgram.programId,
+        treasury: treasury.publicKey
+    }).rpc();
+    console.log(`created keychain domain tx: ${txid}`);
+
+    console.log(`creating keychain for : ${username}...`);
+    // then create the keychain
+    txid = await keychainProgram.methods.createKeychain(username).accounts({
+        keychain: userKeychainPda,
+        keychainState: userKeychainStatePda,
+        key: userKeychainKeyPda,
+        domain: domainPda,
+        authority: provider.wallet.publicKey,
+        wallet: provider.wallet.publicKey,
+        systemProgram: SystemProgram.programId,
+    }).rpc();
+    console.log(`created keychain for ${username}. tx: ${txid}`);
+}
+
 /**
  * Create stache
  * 
@@ -75,34 +110,13 @@ export const createStache = async (
 
     const stacheProgram = new Program(StacheIdl, StacheIdl.metadata.address, provider);
     const keychainProgram = new Program(KeychainIdl, KeychainIdl.metadata.address, provider);
-
-    console.log("keychainProgram.programId =>", keychainProgram.programId.toBase58())
-
     const [domainPda] = findDomainPda(domain, keychainProgram.programId);
 
-    console.log("domainPda =>", domainPda.toBase58())
-    const [domainStatePda, domainStatePdaBump] = findDomainStatePda(domain, keychainProgram.programId);
-
     const [userKeychainPda] = findKeychainPda(username, domain, keychainProgram.programId);
-    const [userKeychainStatePda] = findKeychainStatePda(userKeychainPda, domain, keychainProgram.programId);
-    const [userKeychainKeyPda] = findKeychainKeyPda(provider.wallet.publicKey, domain, keychainProgram.programId);
-
 
     const [stachePda, stachePdaBump] = findStachePda(username, domainPda, stacheProgram.programId);
 
-    console.log(`creating keychain domain: ${domain}...`);
-
-    // first create the domain
-    let txid = await keychainProgram.methods.createDomain(domain, renameCost).accounts({
-        domain: domainPda,
-        domainState: domainStatePda,
-        authority: provider.wallet.publicKey,
-        systemProgram: SystemProgram.programId,
-        treasury: treasury.publicKey
-    }).rpc();
-    console.log(`created keychain domain tx: ${txid}`);
-
-    txid = await stacheProgram.methods.createStache().accounts({
+    const txid = await stacheProgram.methods.createStache().accounts({
         stache: stachePda,
         keychain: userKeychainPda,
         keychainProgram: keychainProgram.programId,
