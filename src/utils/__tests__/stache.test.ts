@@ -1,6 +1,6 @@
 import * as anchor from "@project-serum/anchor";
 import { Keypair } from "@solana/web3.js";
-import { createKeychain, createStache, getStache } from "../stache";
+import { createKeychain, createStache, getKeychain, getStache } from "../stache";
 import { airdropSol } from "../utils";
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -50,8 +50,17 @@ describe('stache', () => {
     // await airdropSol(connection, provider.wallet.publicKey, 1)
     // await airdropSol(connection, adminWallet.publicKey, 1)
 
-    await createKeychain(provider, domain, username)
+    // await createKeychain(provider, domain, username)
   }, 10000)
+
+  it('createKeychain', async () => {
+    await createKeychain(provider, domain, username)
+
+    const keychain = await getKeychain(provider, domain, username)
+
+    expect(keychain).not.toBe(null)
+  }, 10000);
+
 
   it('createStache', async () => {
     await createStache(provider, domain, username)
